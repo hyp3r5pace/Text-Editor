@@ -7,6 +7,10 @@
 #include <termios.h>
 #include <unistd.h>
 
+/****** defines ******/
+
+#define CTRL_KEY(k) ((k) & 0x1f)
+
 /**** Data *****/
 
 struct termios orig_termios; //struct termios belong to the <termios.h> header file. contains fields which
@@ -88,7 +92,7 @@ int main()
 			printf("%d ('%c')\r\n",c,c);
 		}
 
-		if(c=='q')
+		if(c== CTRL_KEY('q'))
 			break;
 	}
 	
