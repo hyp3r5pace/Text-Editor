@@ -9,7 +9,7 @@
 
 /****** defines ******/
 
-#define CTRL_KEY(k) ((k) & 0x1f)
+#define CTRL_KEY(k) ((k) & 0x1f)  //Defining CTRL_KEY(k) as ctrl+ some character. Changing the meaning of the control charcters.
 
 /**** Data *****/
 
@@ -20,6 +20,10 @@ struct termios orig_termios; //struct termios belong to the <termios.h> header f
 
 void die(const char* s)
 {
+	write(STDOUT_FILENO, "\x1b[2J", 4);
+	write(STDOUT_FILENO, "\x1b[H", 3);
+
+
 	perror(s);
 	exit(1);
 }
@@ -69,6 +73,49 @@ void enableRawMode() {
 	}	
 
 
+char editorReadKey() {
+		int nread;
+		char c;
+		while((nread=read(STDIN_FILENO, &c,1) != 1)) {
+				if(nread == -1 && errno != EAGAIN)
+					die("read");
+			}
+
+			return c;
+		}
+
+/******* Output ******/
+
+void editorRefreshScreen()   // To render the editor screen in the terminal.
+{
+	
+	write(STDOUT_FILENO,"\x1b[2J",4);  // \x1b[2J is a escape sequence command which is ANSI defined and clears the whole screen
+	write(STDOUT_FILENO,"\x1b[H",3); // \x1b[H is a espace sequence command which is ANSI defined and repositions the cursor to                                          //the defined position mentioned in the command parameter.
+
+}
+
+
+
+/***** Input *******/
+
+void editorProcessKeypress() {
+	char c= editorReadKey();
+
+	switch(c)
+	{
+		case CTRL_KEY('q'):
+		write(STDOUT_FILENO, "\x1b[2J", 4);               
+	       	write(STDOUT_FILENO, "\x1b[H", 3);	       
+		
+		exit(0);
+		break;
+	}
+
+	}
+
+		
+
+
 /******* Init *******/
 	       
 
@@ -78,22 +125,8 @@ int main()
 		
 	while(1)
 	{	
-		
-		char c='\0';
-		if(read(STDIN_FILENO, &c, 1)==-1 && errno!= EAGAIN)
-		{
-			die("read");
-		}
-
-		if(iscntrl(c)) {
-			printf("%d\r\n",c);
-		}
-		else {
-			printf("%d ('%c')\r\n",c,c);
-		}
-
-		if(c== CTRL_KEY('q'))
-			break;
+		editorRefreshScreen();
+		editorProcessKeypress();
 	}
 	
 	return 0;
