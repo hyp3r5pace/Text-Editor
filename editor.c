@@ -1,4 +1,4 @@
-/**** Includes *****/
+/**** Includes *****/ 
 
 #include <ctype.h>
 #include <errno.h>
@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <termios.h>
 #include <unistd.h>
+#include <sys/ioctl.h>
 
 /****** defines ******/
 
@@ -13,8 +14,19 @@
 
 /**** Data *****/
 
+struct editorConfig{
+
 struct termios orig_termios; //struct termios belong to the <termios.h> header file. contains fields which
 			     //store flag bits controlling various attributes of the terminal.
+
+int screenrows;
+int screencols;
+
+
+};
+
+struct editorConfig E;
+
 
 /**** Terminal ******/
 
@@ -27,10 +39,10 @@ void die(const char* s)
 	perror(s);
 	exit(1);
 }
-
+                                           
 void disableRawMode() {
 
-	if(tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios)==-1) //belong to <termios.h>
+	if(tcsetattr(STDIN_FILENO, TCSAFLUSH, &E.orig_termios)==-1) //belong to <termios.h>
 		die("tcsetattr");
 
 	}
@@ -38,7 +50,7 @@ void disableRawMode() {
 
 void enableRawMode() {
 
-	if(tcgetattr(STDIN_FILENO, &orig_termios)==-1) //belong to <termios.h>
+	if(tcgetattr(STDIN_FILENO, &E.orig_termios)==-1) //belong to <termios.h>
 		die("tcgetattr");
 
 	atexit(disableRawMode); //belong to <stdio.h> : tells the program to call disableRawMode() whenever				   // the program exits.
@@ -84,7 +96,89 @@ char editorReadKey() {
 			return c;
 		}
 
+
+int getCursorPosition(int* rows,int* cols)       //Isn't working!! The escape sequence command \x1b[6N is not replying with the 
+{						// cursor position, checked in bash in windows(WSL).
+	char buf[32];
+	unsigned int i=0;
+
+
+	if(write(STDOUT_FILENO, "\x1b[6N",4)!=4)
+	{
+		return -1;
+	}
+
+
+	while(i < sizeof(buf) - 1)
+	{
+		if(read(STDIN_FILENO, &buf[i], 1) != 1)
+		{
+			break;
+		}
+
+		if(buf[i]== 'R')
+		{
+			break;
+		}
+
+		i++;
+	}
+
+	buf[i] = '\0';
+
+	if(buf[0] != '\x1b' || buf[1] != '[')
+	{
+		return -1;
+	}
+
+	if(sscanf(&buf[2], "%d;%d", rows,cols) != 2)
+	{
+		return -1;
+	}
+
+	return 0;
+
+}	
+
+
+int getWindowSize(int* row, int* col)  //getting the size of the terminal in which current editor is being displayed.
+{
+	struct winsize ws;   //defined by <sys/ioctl.h>; structure having two fields, one row and other one is column
+
+	if( ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws)==-1 || ws.ws_col==0)  //ioctl() with TIOCGWINSZ returns the terminal size
+	{
+		if(write(STDOUT_FILENO, "\x1b[999C\x1b[999B", 12) !=12)  //Moving the cursor to right bottom position, used in fall
+		{							 //back method for finding the terminal size in which the 
+			return -1;					 //editor is represented.
+		}
+
+		return getCursorPosition(row,col); //Not working
+	}
+	else
+	{
+		*row = ws.ws_row;
+		*col= ws.ws_col;
+
+		return 0;
+	}
+}
+
+
+
 /******* Output ******/
+
+void editorDrawRows()
+{       
+       	int y;       
+       	for(y=0;y<E.screenrows-1;y++)       
+       	{               
+		write(STDOUT_FILENO, "~\n\r",3);  
+  	}
+
+	write(STDOUT_FILENO, "~",1);
+}
+
+
 
 void editorRefreshScreen()   // To render the editor screen in the terminal.
 {
@@ -92,6 +186,9 @@ void editorRefreshScreen()   // To render the editor screen in the terminal.
 	write(STDOUT_FILENO,"\x1b[2J",4);  // \x1b[2J is a escape sequence command which is ANSI defined and clears the whole screen
 	write(STDOUT_FILENO,"\x1b[H",3); // \x1b[H is a espace sequence command which is ANSI defined and repositions the cursor to                                          //the defined position mentioned in the command parameter.
 
+	editorDrawRows();
+
+	write(STDOUT_FILENO, "\x1b[H", 3);
 }
 
 
@@ -106,7 +203,7 @@ void editorProcessKeypress() {
 		case CTRL_KEY('q'):
 		write(STDOUT_FILENO, "\x1b[2J", 4);               
 	       	write(STDOUT_FILENO, "\x1b[H", 3);	       
-		
+
 		exit(0);
 		break;
 	}
@@ -117,14 +214,29 @@ void editorProcessKeypress() {
 
 
 /******* Init *******/
-	       
+
+void initEditor()
+{
+	
+	if( getWindowSize(&E.screenrows, &E.screencols)==-1)
+	{
+		die("getWindowSize");
+	}
+}
+
+
+
+
+
 
 int main()
 {
 	enableRawMode();
 		
+
 	while(1)
-	{	
+	{
+		initEditor();	
 		editorRefreshScreen();
 		editorProcessKeypress();
 	}
