@@ -7,10 +7,15 @@
 #include <termios.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
+#include <string.h>
 
 /****** defines ******/
 
 #define CTRL_KEY(k) ((k) & 0x1f)  //Defining CTRL_KEY(k) as ctrl+ some character. Changing the meaning of the control charcters.
+
+#define ABUF_INIT {NULL,0}  //works as constructor for the structure.
+
+#define EDITOR_VERSION "0.0.1" //Editor version which is displayed in the welcome message.
 
 /**** Data *****/
 
@@ -21,6 +26,9 @@ struct termios orig_termios; //struct termios belong to the <termios.h> header f
 
 int screenrows;
 int screencols;
+
+int cursorX;
+int cursorY;
 
 
 };
@@ -85,16 +93,69 @@ void enableRawMode() {
 	}	
 
 
-char editorReadKey() {
+char editorReadKey()
+{
 		int nread;
 		char c;
-		while((nread=read(STDIN_FILENO, &c,1) != 1)) {
-				if(nread == -1 && errno != EAGAIN)
-					die("read");
+		while((nread=read(STDIN_FILENO, &c,1) != 1))
+	       	{
+			if(nread == -1 && errno != EAGAIN)
+			{
+				die("read");
 			}
 
-			return c;
 		}
+
+		if(c=='\x1b')        //Condition for reading arrow keys for moving the cursor; Arrow keys are multiple bytes escape 
+		{                    //sequence such as \x1b[? , where ? is replaced by A,B,C,D to associate with the arrow keys.
+			char seq[3];
+
+			if((nread=read(STDIN_FILENO, &seq[0], 1))!=1)
+			{
+				if(nread== -1 && errno != EAGAIN)
+				{
+					die("read");
+				}
+				else
+				{
+					return '\x1b';
+				}
+			}
+
+			if((nread=read(STDIN_FILENO, &seq[1], 1)) !=1)
+			{
+				if(nread == -1 && errno != EAGAIN)
+				{
+					die("read");
+				}
+				else
+				{
+					return '\x1b';
+				}
+			}
+
+			if(seq[0] == '[')
+			{
+				switch(seq[1])
+				{
+					case 'A': return 'w';
+					case 'B': return 's';
+					case 'C': return 'd';
+					case 'D': return 'a';
+					default: return '\x1b';
+				}
+			}
+			else
+			{
+				return '\x1b';
+			}
+
+		}
+		else
+		{	
+		return c;
+		}
+}
 
 
 int getCursorPosition(int* rows,int* cols)       //Isn't working!! The escape sequence command \x1b[6N is not replying with the 
@@ -163,37 +224,130 @@ int getWindowSize(int* row, int* col)  //getting the size of the terminal in whi
 	}
 }
 
+/****** Append buffer ******/
+
+//Append buffer is created so as to perform write() only one time everytime it refreshScreen is done as multiple write() create a
+//flickering effect due to delay between multiple write().
+
+struct abuf     //created a structure for building a dynamic string which is not available by default in C.
+{
+	char* b;
+	int len;
+};
 
 
-/******* Output ******/
 
-void editorDrawRows()
-{       
-       	int y;       
-       	for(y=0;y<E.screenrows-1;y++)       
-       	{               
-		write(STDOUT_FILENO, "~\n\r",3);  
-  	}
+void abAppend(struct abuf *ab, const char* s, int len)  //function to append to the dynamic allocated string and form a new string
+{
+	char* new = realloc(ab->b,ab->len + len);
+	
+	if(new == NULL)
+	{
+		return ;
+	}
 
-	write(STDOUT_FILENO, "~",1);
+	memcpy(&new[ab->len],s,len);
+	ab->b=new;
+	ab->len +=len;
+}
+
+void abFree(struct abuf *ab)  //Function to deallocate memory to the dynamically allocated string at the end of refresh.
+{
+	free(ab->b);	
 }
 
 
 
+/******* Output ******/
+
+void editorDrawRows(struct abuf *ab)
+{       
+       	int y;       
+       	for(y=0;y<E.screenrows-1;y++)       
+       	{  
+   		if(y==E.screenrows/3)
+		{
+			abAppend(ab,"~",1);
+
+			char welcome[80];
+			int welcomelen = snprintf(welcome, sizeof(welcome),"Editor --version %s\r\n", EDITOR_VERSION); 
+			//snprintf() used to interpolate EDITOR_VERSION string to form the welcome string and hence form the welcome			   // message. 
+
+			if(welcomelen > E.screencols)
+			{
+				welcomelen = E.screencols;
+			}
+			
+			int padding = (E.screencols - welcomelen)/2;
+			
+			while(padding > 0) 
+			{
+				abAppend(ab," ",1);
+				padding--;
+			}
+
+			abAppend(ab,welcome,welcomelen);
+
+		}  else {
+
+		abAppend(ab,"~\r\n",3);
+		 
+		}
+  	}
+
+	abAppend(ab,"~",1);
+}
+
+	
+
 void editorRefreshScreen()   // To render the editor screen in the terminal.
 {
+	struct abuf ab=ABUF_INIT;
 	
-	write(STDOUT_FILENO,"\x1b[2J",4);  // \x1b[2J is a escape sequence command which is ANSI defined and clears the whole screen
-	write(STDOUT_FILENO,"\x1b[H",3); // \x1b[H is a espace sequence command which is ANSI defined and repositions the cursor to                                          //the defined position mentioned in the command parameter.
+	abAppend(&ab,"\x1b[?25l",6); // \x1b[?25l escape sequence command is used to hide the cursor. 	
+				     // Cursor is hidden before any drawing or clearing of screen is done so as to prevent any
+				     // flickering which may happen due to movement of cursor to middle of screen during drawing.	
 
-	editorDrawRows();
+	abAppend(&ab,"\x1b[2J",4);  // \x1b[2J is a escape sequence command which is ANSI defined and clears the whole screen
+	abAppend(&ab,"\x1b[H",3); // \x1b[H is a espace sequence command which is ANSI defined and repositions the cursor to                                          //the defined position mentioned in the command parameter.
 
-	write(STDOUT_FILENO, "\x1b[H", 3);
+	editorDrawRows(&ab);
+
+	char buf[32];
+
+       int length=snprintf(buf,sizeof(buf),"\x1b[%d;%dH",E.cursorY+1,E.cursorX+1);
+	
+	abAppend(&ab,buf,length);
+	abAppend(&ab, "\x1b[?25h",6); // \x1b[?25h escape sequence command is used to show the cursor which was hidden.
+
+	write(STDOUT_FILENO,ab.b,ab.len);
+	abFree(&ab);
 }
 
 
 
 /***** Input *******/
+
+void editorMoveCursor(char key)
+{
+	switch(key)
+	{
+		case 'w': E.cursorY--;
+			  break;
+		
+		case 's':E.cursorY++;
+			 break;
+
+		case 'a':E.cursorX--;
+			 break;
+
+		case 'd':E.cursorX++;
+			 break;
+
+	}
+}
+
+
 
 void editorProcessKeypress() {
 	char c= editorReadKey();
@@ -206,6 +360,13 @@ void editorProcessKeypress() {
 
 		exit(0);
 		break;
+
+		case 'w':
+		case 's':
+		case 'a':
+		case 'd':
+		editorMoveCursor(c);
+		break;		
 	}
 
 	}
@@ -232,7 +393,8 @@ void initEditor()
 int main()
 {
 	enableRawMode();
-		
+	E.cursorX=0;
+	E.cursorY=0;	
 
 	while(1)
 	{
@@ -243,4 +405,5 @@ int main()
 	
 	return 0;
 }
+
 
