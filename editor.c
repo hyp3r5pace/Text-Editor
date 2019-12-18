@@ -17,6 +17,15 @@
 
 #define EDITOR_VERSION "0.0.1" //Editor version which is displayed in the welcome message.
 
+enum editorKey {          //Used to map arrow keys to movement of cursor function and preventing it from clashing with other charch
+						//ter inputs.
+		Arrow_left=1000,
+		Arrow_right,
+		Arrow_up ,
+		Arrow_down
+
+	       };
+
 /**** Data *****/
 
 struct editorConfig{
@@ -38,7 +47,7 @@ struct editorConfig E;
 
 /**** Terminal ******/
 
-void die(const char* s)
+void die(const char* s)      
 {
 	write(STDOUT_FILENO, "\x1b[2J", 4);
 	write(STDOUT_FILENO, "\x1b[H", 3);
@@ -93,7 +102,7 @@ void enableRawMode() {
 	}	
 
 
-char editorReadKey()
+int editorReadKey()
 {
 		int nread;
 		char c;
@@ -138,10 +147,10 @@ char editorReadKey()
 			{
 				switch(seq[1])
 				{
-					case 'A': return 'w';
-					case 'B': return 's';
-					case 'C': return 'd';
-					case 'D': return 'a';
+					case 'A': return Arrow_up;
+					case 'B': return Arrow_down;
+					case 'C': return Arrow_right;
+					case 'D': return Arrow_left;
 					default: return '\x1b';
 				}
 			}
@@ -328,20 +337,20 @@ void editorRefreshScreen()   // To render the editor screen in the terminal.
 
 /***** Input *******/
 
-void editorMoveCursor(char key)
+void editorMoveCursor(int key)
 {
 	switch(key)
 	{
-		case 'w': E.cursorY--;
+		case Arrow_up: E.cursorY--;
 			  break;
 		
-		case 's':E.cursorY++;
+		case Arrow_down:E.cursorY++;
 			 break;
 
-		case 'a':E.cursorX--;
+		case Arrow_left:E.cursorX--;
 			 break;
 
-		case 'd':E.cursorX++;
+		case Arrow_right:E.cursorX++;
 			 break;
 
 	}
@@ -350,7 +359,7 @@ void editorMoveCursor(char key)
 
 
 void editorProcessKeypress() {
-	char c= editorReadKey();
+	int c= editorReadKey();
 
 	switch(c)
 	{
@@ -361,10 +370,10 @@ void editorProcessKeypress() {
 		exit(0);
 		break;
 
-		case 'w':
-		case 's':
-		case 'a':
-		case 'd':
+		case Arrow_up:
+		case Arrow_down:
+		case Arrow_left:
+		case Arrow_right:
 		editorMoveCursor(c);
 		break;		
 	}
