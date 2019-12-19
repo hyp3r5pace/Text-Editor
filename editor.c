@@ -22,7 +22,12 @@ enum editorKey {          //Used to map arrow keys to movement of cursor functio
 		Arrow_left=1000,
 		Arrow_right,
 		Arrow_up ,
-		Arrow_down
+		Arrow_down,
+		Page_up,
+		Page_down,
+		Home,
+		End,
+		Del
 
 	       };
 
@@ -145,18 +150,75 @@ int editorReadKey()
 
 			if(seq[0] == '[')
 			{
-				switch(seq[1])
+				if(seq[1]>= '0' && seq[1] <= '9')
 				{
-					case 'A': return Arrow_up;
-					case 'B': return Arrow_down;
-					case 'C': return Arrow_right;
-					case 'D': return Arrow_left;
-					default: return '\x1b';
+					if((nread=read(STDIN_FILENO, &seq[2], 1)) != 1)
+					{
+						if(nread == -1 && errno != EAGAIN)
+						{
+							die("read");
+						}
+						else
+						{
+							return '\x1b';
+						}
+					}
+
+					if(seq[2]=='~')
+					{
+						switch(seq[1])
+						{
+							case '5': return Page_up;
+								  
+
+							case '6': return Page_down;
+								  
+							
+							case '1': 
+							case '7': return Home;
+
+							case '4':
+							case '8': return End;
+							
+							case '3': return Del;	  
+						}
+					}
+					else
+					{
+						return '\x1b';
+					}
+
+
+				}
+				else
+				{
+					switch(seq[1])
+					{
+						case 'A': return Arrow_up;
+						case 'B': return Arrow_down;
+						case 'C': return Arrow_right;
+						case 'D': return Arrow_left;
+						case 'H': return Home;
+						case 'F': return End;
+						default: return '\x1b';
+					}
 				}
 			}
 			else
 			{
-				return '\x1b';
+				if(seq[0] == 'O')
+				{
+					switch(seq[1])
+					{
+						case 'H': return Home;
+						case 'F' : return End;
+						default: return '\x1b';
+					}
+				}
+				else
+				{
+					return '\x1b';
+				}
 			}
 
 		}
@@ -341,13 +403,17 @@ void editorMoveCursor(int key)
 {
 	switch(key)
 	{
-		case Arrow_up: E.cursorY--;
-			  break;
+		case Arrow_up:
+		       if(E.cursorY!=0)
+			E.cursorY--;
+			 break;
 		
 		case Arrow_down:E.cursorY++;
 			 break;
 
-		case Arrow_left:E.cursorX--;
+		case Arrow_left:
+			if(E.cursorX!=0)
+			E.cursorX--;
 			 break;
 
 		case Arrow_right:E.cursorX++;
@@ -375,10 +441,59 @@ void editorProcessKeypress() {
 		case Arrow_left:
 		case Arrow_right:
 		editorMoveCursor(c);
+		break;	
+
+		case Page_up:
+		case Page_down:	
+		{
+				int times = E.screenrows;
+
+				while(times--)
+				{
+					if(c==Page_up)
+					{
+						editorMoveCursor(Arrow_up);
+					}
+					else
+					{
+						editorMoveCursor(Arrow_down);
+					}
+				}
+
+		}	
+	
+		break;
+		
+		case End:
+		case Home: 
+		{
+				int times = E.screencols;
+				
+				while(times--)
+				{
+					if(c==Home)
+					{
+						editorMoveCursor(Arrow_left);
+					}
+					else
+					{
+						if(times==0)
+						{
+							break;
+						}
+						editorMoveCursor(Arrow_right);
+					}
+				}
+		}
+
+		break;
+
+		case Del:
+		
 		break;		
 	}
 
-	}
+}
 
 		
 
