@@ -1,5 +1,9 @@
 /**** Includes *****/ 
 
+#define _DEFAULT_SOURCE  //feature test macro
+#define _BSD_SOURCE    //feature test macro
+#define _GNU_SOURCE   //feature test macro
+
 #include <ctype.h>
 #include <errno.h>
 #include <stdio.h>
@@ -8,6 +12,7 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <string.h>
+#include <sys/types.h>
 
 /****** defines ******/
 
@@ -33,6 +38,13 @@ enum editorKey {          //Used to map arrow keys to movement of cursor functio
 
 /**** Data *****/
 
+typedef struct erow{                //structure defined to store the characters to be printed on a line in the editor.
+			int size;
+			char* chars;
+			
+	       	   } erow;
+
+
 struct editorConfig{
 
 struct termios orig_termios; //struct termios belong to the <termios.h> header file. contains fields which
@@ -44,7 +56,12 @@ int screencols;
 int cursorX;
 int cursorY;
 
+int numrows;   //counts the number of rows of text the file has
+erow *row;      //structure which acts as a dynamic array to store a string which is a single line.
 
+int fileopen_flag;    //flag to indicate whether file is opened or not.
+
+int rowoff;
 };
 
 struct editorConfig E;
@@ -295,6 +312,73 @@ int getWindowSize(int* row, int* col)  //getting the size of the terminal in whi
 	}
 }
 
+/******** Row Operations *********/
+
+void editorAppendRow(char *s, size_t len)
+{
+		
+		E.row = realloc(E.row,sizeof(erow) * (E.numrows+1));
+		
+		int at=E.numrows;
+	        E.row[at].size = len;       
+	       	E.row[at].chars = (char*) malloc(len+1);       
+	       	memcpy(E.row[at].chars,s,len+1);       
+	       	E.row[at].chars[len] = '\0';     
+   		E.numrows++;
+}
+
+
+
+
+
+
+/******** File I/O *********/
+
+void editorOpen(char* filename)                //function to open the text file which is to be edited in the text editor.
+{
+	FILE *fp = fopen(filename, "r");
+	if(!fp)
+	{
+		die("fopen");
+	}
+	else
+	{
+		E.fileopen_flag = 0;
+	}
+
+	
+	char* line= NULL;
+	size_t linecap=0;
+	ssize_t linelen;
+
+	while(1)
+	{
+		line= NULL;
+		linecap=0;
+
+		linelen = getline(&line,&linecap,fp);
+
+		if(linelen != -1)
+	 	{
+			while(linelen >	0 && (line[linelen-1] == '\n' || line[linelen-1] == '\r'))
+			{
+				linelen--;
+			}
+		
+		editorAppendRow(line,linelen);
+		free(line);
+
+		}
+		else
+		{
+
+			fclose(fp);
+			break;
+		}
+	}
+}
+
+
 /****** Append buffer ******/
 
 //Append buffer is created so as to perform write() only one time everytime it refreshScreen is done as multiple write() create a
@@ -331,21 +415,41 @@ void abFree(struct abuf *ab)  //Function to deallocate memory to the dynamically
 
 /******* Output ******/
 
+void editorScroll()
+{
+	if(E.cursorY < E.rowoff)     //For scrolling during Arrow_up keypress.(E.cursorY represents the position of the cursor in
+	{			     // file not in the terminal).
+		E.rowoff = E.cursorY;
+	}
+
+	if(E.cursorY >= (E.rowoff + E.screenrows))  //For scrolling the file beyond the visible region during Arrow_down keypress.
+	{
+		E.rowoff = E.cursorY -E.screenrows + 1;
+	}
+}
+
+
+
+
 void editorDrawRows(struct abuf *ab)
 {       
-       	int y;       
+       	int y;  
+   	int filerow;	
        	for(y=0;y<E.screenrows-1;y++)       
-       	{  
-   		if(y==E.screenrows/3)
-		{
+       	{ 
+		filerow = y+E.rowoff;
+	    if(filerow>=E.numrows)
+	    {	    
+   		if(E.fileopen_flag && E.numrows==0 && y==E.screenrows/3)
+	    	{
 			abAppend(ab,"~",1);
-
+	
 			char welcome[80];
 			int welcomelen = snprintf(welcome, sizeof(welcome),"Editor --version %s\r\n", EDITOR_VERSION); 
 			//snprintf() used to interpolate EDITOR_VERSION string to form the welcome string and hence form the welcome			   // message. 
 
 			if(welcomelen > E.screencols)
-			{
+	    		{
 				welcomelen = E.screencols;
 			}
 			
@@ -364,15 +468,39 @@ void editorDrawRows(struct abuf *ab)
 		abAppend(ab,"~\r\n",3);
 		 
 		}
-  	}
+	   }  
+	    else
+	    {
 
-	abAppend(ab,"~",1);
+		if(E.screencols<E.row[filerow].size)
+		{
+			E.row[filerow].size = E.screencols;
+		}
+
+		abAppend(ab,E.row[filerow].chars,E.row[filerow].size);
+		abAppend(ab,"\r\n",2);
+	    }
+    
+	 }
+	
+	filerow=y+E.rowoff;
+
+	if(filerow>=E.numrows)
+	{
+		abAppend(ab,"~",1);
+	}
+	else
+	{
+		abAppend(ab,E.row[filerow].chars,E.row[filerow].size);
+	}
 }
 
 	
 
 void editorRefreshScreen()   // To render the editor screen in the terminal.
 {
+	editorScroll();
+
 	struct abuf ab=ABUF_INIT;
 	
 	abAppend(&ab,"\x1b[?25l",6); // \x1b[?25l escape sequence command is used to hide the cursor. 	
@@ -386,8 +514,11 @@ void editorRefreshScreen()   // To render the editor screen in the terminal.
 
 	char buf[32];
 
-       int length=snprintf(buf,sizeof(buf),"\x1b[%d;%dH",E.cursorY+1,E.cursorX+1);
-	
+       int length=snprintf(buf,sizeof(buf),"\x1b[%d;%dH",(E.cursorY-E.rowoff)+1,E.cursorX+1); 
+
+	//E.cursorY-E.rowoff+1 actually set the position of the cursor before displaying the cursor in the visible region of the 
+	//terminal eventhough E.cursorY actually represents the position of the cursor in the file, not int the terminal.
+
 	abAppend(&ab,buf,length);
 	abAppend(&ab, "\x1b[?25h",6); // \x1b[?25h escape sequence command is used to show the cursor which was hidden.
 
@@ -405,15 +536,24 @@ void editorMoveCursor(int key)
 	{
 		case Arrow_up:
 		       if(E.cursorY!=0)
-			E.cursorY--;
+		       {
+				E.cursorY--;
+		       }
 			 break;
 		
-		case Arrow_down:E.cursorY++;
+		case Arrow_down:
+			 {
+				
+				if(E.cursorY <E.numrows-1)
+				{
+					E.cursorY++;
+				}
+			 }
 			 break;
 
 		case Arrow_left:
 			if(E.cursorX!=0)
-			E.cursorX--;
+		 	E.cursorX--;
 			 break;
 
 		case Arrow_right:E.cursorX++;
@@ -468,6 +608,7 @@ void editorProcessKeypress() {
 		case Home: 
 		{
 				int times = E.screencols;
+
 				
 				while(times--)
 				{
@@ -514,11 +655,19 @@ void initEditor()
 
 
 
-int main()
+int main(int argc, char *argv[])
 {
 	enableRawMode();
 	E.cursorX=0;
 	E.cursorY=0;	
+	E.numrows=0;
+	E.fileopen_flag= 1;
+	E.rowoff=0;
+	E.row = NULL;
+	if(argc >=2)
+	{
+		editorOpen(argv[1]);
+	}
 
 	while(1)
 	{
