@@ -22,6 +22,8 @@
 
 #define EDITOR_VERSION "0.0.1" //Editor version which is displayed in the welcome message.
 
+#define EDITOR_TAB_STOP 8  //the maximum number of spaces a tab keypress can have.
+
 enum editorKey {          //Used to map arrow keys to movement of cursor function and preventing it from clashing with other charch
 						//ter inputs.
 		Arrow_left=1000,
@@ -41,6 +43,10 @@ enum editorKey {          //Used to map arrow keys to movement of cursor functio
 typedef struct erow{                //structure defined to store the characters to be printed on a line in the editor.
 			int size;
 			char* chars;
+
+			char* render;   //Copies the content of chars and replaces each tab with appropiate number of spaces.
+
+			int rsize;     //Stores the siz eof render string.
 			
 	       	   } erow;
 
@@ -61,7 +67,12 @@ erow *row;      //structure which acts as a dynamic array to store a string whic
 
 int fileopen_flag;    //flag to indicate whether file is opened or not.
 
-int rowoff;
+int rowoff;     //Stores the row number of the file from which the text should be displayed.
+
+int coloff;    //Stores the column number of the file from which the text should be displayed.
+
+int renderX;   //Stores the horizontal position of the cursor in the render string
+
 };
 
 struct editorConfig E;
@@ -314,6 +325,79 @@ int getWindowSize(int* row, int* col)  //getting the size of the terminal in whi
 
 /******** Row Operations *********/
 
+
+/*
+int editorRowCxtoRx(erow* row, int cx)
+{
+	int rX =0;
+	int j;
+
+	for(j=0;j < cx;j++)
+	{
+		if(row->chars[j] == '\t')
+		{
+			rX += (EDITOR_TAB_STOP - 1) - (rX % EDITOR_TAB_STOP);
+		}
+
+		rX++;
+	}
+
+	return rX;
+}
+
+*/
+
+
+void editorUpdateRow(erow *row)    //function to parse chars and replace tabs with spaces and store them in render string.
+{
+	int tab =0;
+	int j;
+
+	for(j=0;j<(row->size);j++)
+	{
+		if(row->chars[j] == '\t')
+		{
+			tab++;
+		}
+	}
+
+
+	
+	free(row->render);
+	row->render = (char*) malloc(row->size+ tab * ((EDITOR_TAB_STOP)-1) + 1);
+
+	int idx=0;
+
+	for(j=0;j<row->size;j++)
+	{
+		if(row->chars[j] != '\t')
+		{
+			row->render[idx++] = row->chars[j];
+		}
+		else
+		{
+		//	for(int i=0;i<8;i++)
+		
+			row->render[idx++] = ' ';
+
+		
+
+	         	while(idx % EDITOR_TAB_STOP != 0)
+			{
+				row->render[idx++] = ' ';
+			}
+		
+		}
+	}
+
+	row->render[idx] = '\0';
+
+	row->rsize = idx;
+}
+
+
+
+
 void editorAppendRow(char *s, size_t len)
 {
 		
@@ -323,7 +407,13 @@ void editorAppendRow(char *s, size_t len)
 	        E.row[at].size = len;       
 	       	E.row[at].chars = (char*) malloc(len+1);       
 	       	memcpy(E.row[at].chars,s,len+1);       
-	       	E.row[at].chars[len] = '\0';     
+	       	E.row[at].chars[len] = '\0';
+
+	   	E.row[at].render = NULL;
+		E.row[at].rsize = 0;	
+		
+		editorUpdateRow(&E.row[at]);
+
    		E.numrows++;
 }
 
@@ -417,6 +507,15 @@ void abFree(struct abuf *ab)  //Function to deallocate memory to the dynamically
 
 void editorScroll()
 {
+
+	//E.renderX = 0;
+
+	/*if(E.cursorY < E.numrows)
+	{
+		E.renderX = editorRowCxtoRx(&E.row[E.cursorY],E.cursorX);
+	}
+	*/
+
 	if(E.cursorY < E.rowoff)     //For scrolling during Arrow_up keypress.(E.cursorY represents the position of the cursor in
 	{			     // file not in the terminal).
 		E.rowoff = E.cursorY;
@@ -425,6 +524,16 @@ void editorScroll()
 	if(E.cursorY >= (E.rowoff + E.screenrows))  //For scrolling the file beyond the visible region during Arrow_down keypress.
 	{
 		E.rowoff = E.cursorY -E.screenrows + 1;
+	}
+
+	if(E.renderX >= (E.coloff + E.screencols))
+	{
+		E.coloff = E.renderX - E.screencols + 1;
+	}
+
+	if(E.renderX < E.coloff)
+	{
+		E.coloff = E.renderX;
 	}
 }
 
@@ -471,13 +580,20 @@ void editorDrawRows(struct abuf *ab)
 	   }  
 	    else
 	    {
+		 
+		int len = E.row[filerow].rsize - E.coloff;
 
-		if(E.screencols<E.row[filerow].size)
+		if(len < 0)
 		{
-			E.row[filerow].size = E.screencols;
+			len = 0;
 		}
 
-		abAppend(ab,E.row[filerow].chars,E.row[filerow].size);
+		if(E.screencols<len)
+		{
+			len = E.screencols;
+		}
+
+		abAppend(ab,&E.row[filerow].render[E.coloff],len);
 		abAppend(ab,"\r\n",2);
 	    }
     
@@ -491,7 +607,18 @@ void editorDrawRows(struct abuf *ab)
 	}
 	else
 	{
-		abAppend(ab,E.row[filerow].chars,E.row[filerow].size);
+		int len = E.row[filerow].rsize - E.coloff;
+		if(len < 0)
+		{
+			len = 0;
+		}
+
+		if(E.screencols < len)
+		{
+			len = E.screencols;
+		}
+
+		abAppend(ab,&E.row[filerow].render[E.coloff],E.row[filerow].rsize);
 	}
 }
 
@@ -513,8 +640,13 @@ void editorRefreshScreen()   // To render the editor screen in the terminal.
 	editorDrawRows(&ab);
 
 	char buf[32];
-
-       int length=snprintf(buf,sizeof(buf),"\x1b[%d;%dH",(E.cursorY-E.rowoff)+1,E.cursorX+1); 
+	/*
+	if(E.cursorX > (E.row[E.cursorY].size-1))
+	{
+		E.cursorX = E.row[E.cursorY].size-1;
+	}
+	*/
+       int length=snprintf(buf,sizeof(buf),"\x1b[%d;%dH",(E.cursorY-E.rowoff)+1,(E.renderX-E.coloff)+1); 
 
 	//E.cursorY-E.rowoff+1 actually set the position of the cursor before displaying the cursor in the visible region of the 
 	//terminal eventhough E.cursorY actually represents the position of the cursor in the file, not int the terminal.
@@ -535,10 +667,24 @@ void editorMoveCursor(int key)
 	switch(key)
 	{
 		case Arrow_up:
-		       if(E.cursorY!=0)
-		       {
-				E.cursorY--;
-		       }
+			{
+		      		 if(E.cursorY!=0)
+		       		{
+						E.cursorY--;
+		       		}
+
+				if(E.cursorX > (E.row[E.cursorY].size-1))
+				{
+					E.coloff = E.row[E.cursorY].size - E.screencols + 1;
+					if(E.coloff < 0)
+					{
+						E.coloff = 0;
+					}
+
+					E.cursorX = E.row[E.cursorY].size;
+				}	
+			}
+
 			 break;
 		
 		case Arrow_down:
@@ -548,18 +694,68 @@ void editorMoveCursor(int key)
 				{
 					E.cursorY++;
 				}
+
+				if(E.cursorX > (E.row[E.cursorY].size-1))
+				{
+					E.coloff = E.row[E.cursorY].size - E.screencols + 1;
+					if(E.coloff < 0)
+					{
+						E.coloff = 0;
+					}
+
+					E.cursorX = E.row[E.cursorY].size;
+					
+				}
 			 }
 			 break;
 
 		case Arrow_left:
-			if(E.cursorX!=0)
-		 	E.cursorX--;
+			if(E.renderX!=0)
+			{
+		 		E.renderX--;
+			}
+			else
+			{
+				if(E.cursorY > 0)
+				{
+					E.cursorY--;
+					E.renderX = E.row[E.cursorY].rsize;
+				}
+			}
+
 			 break;
 
-		case Arrow_right:E.cursorX++;
+		case Arrow_right:
+			 {
+			 	if(E.renderX < E.row[E.cursorY].rsize)
+			 	{
+			 		E.renderX++;
+				}
+				else
+				{
+					if(E.cursorY < E.numrows-1)
+					{
+						E.cursorY++;
+
+						E.renderX = 0;
+					}
+				}
+			
+			 }
 			 break;
 
 	}
+
+/*	erow *row = (E.cursorY >= E.numrows) ? NULL : &E.row[E.cursorY];
+
+	int rowlen = row ? row ->size : 0;
+
+	if(E.renderX > rowlen)
+	{
+		E.renderX = rowlen;
+	}
+	*/
+
 }
 
 
@@ -659,10 +855,12 @@ int main(int argc, char *argv[])
 {
 	enableRawMode();
 	E.cursorX=0;
-	E.cursorY=0;	
+	E.cursorY=0;
+	E.renderX=0;	
 	E.numrows=0;
 	E.fileopen_flag= 1;
 	E.rowoff=0;
+	E.coloff=0;
 	E.row = NULL;
 	if(argc >=2)
 	{
