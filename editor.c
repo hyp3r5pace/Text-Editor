@@ -673,15 +673,15 @@ void editorMoveCursor(int key)
 						E.cursorY--;
 		       		}
 
-				if(E.cursorX > (E.row[E.cursorY].size-1))
+				if(E.renderX > (E.row[E.cursorY].rsize-1))
 				{
-					E.coloff = E.row[E.cursorY].size - E.screencols + 1;
+					E.coloff = E.row[E.cursorY].rsize - E.screencols + 1;
 					if(E.coloff < 0)
 					{
 						E.coloff = 0;
 					}
 
-					E.cursorX = E.row[E.cursorY].size;
+					E.renderX = E.row[E.cursorY].rsize;
 				}	
 			}
 
@@ -695,15 +695,15 @@ void editorMoveCursor(int key)
 					E.cursorY++;
 				}
 
-				if(E.cursorX > (E.row[E.cursorY].size-1))
+				if(E.cursorX > (E.row[E.cursorY].rsize-1))
 				{
-					E.coloff = E.row[E.cursorY].size - E.screencols + 1;
+					E.coloff = E.row[E.cursorY].rsize - E.screencols + 1;
 					if(E.coloff < 0)
 					{
 						E.coloff = 0;
 					}
 
-					E.cursorX = E.row[E.cursorY].size;
+					E.renderX = E.row[E.cursorY].rsize;
 					
 				}
 			 }
@@ -782,45 +782,79 @@ void editorProcessKeypress() {
 		case Page_up:
 		case Page_down:	
 		{
-				int times = E.screenrows;
-
-				while(times--)
+				if(c == Page_up)
 				{
-					if(c==Page_up)
+					E.cursorY = E.rowoff;
+					
+					if(E.renderX > (E.row[E.cursorY].rsize - 1))
 					{
-						editorMoveCursor(Arrow_up);
-					}
-					else
-					{
-						editorMoveCursor(Arrow_down);
-					}
-				}
+						E.coloff = E.row[E.cursorY].rsize - E.screencols + 1;
+						
+						if(E.coloff < 0)
+						{
+							E.coloff = 0;
+						
+						}
 
-		}	
+						E.renderX = E.row[E.cursorY].rsize;
+					}
+
+
+					
+				}
+				else
+				{
+					if(c == Page_down)
+					{
+						E.cursorY = E.rowoff + (E.screenrows - 1);
+
+						if(E.cursorY > (E.numrows-1))
+						{
+							E.cursorY = E.numrows-1;
+						}
+	
+						if(E.renderX > (E.row[E.cursorY].rsize -1))
+						{
+							E.coloff = E.row[E.cursorY].rsize - E.screencols + 1;
+							
+							if(E.coloff < 0)
+							{
+								E.coloff =0 ;
+							}
+
+							E.renderX = E.row[E.cursorY].rsize;
+						}
+
+					}	
+
+				}
+		}		
 	
 		break;
 		
-		case End:
-		case Home: 
+		case End:     //Keypress for moving the cursor to end of line.
+		case Home:    //Keypress for moving the cursor to start of line.
 		{
-				int times = E.screencols;
+			if(c == End)
+			{
+				E.coloff = E.row[E.cursorY].rsize - E.screencols + 1;
 
-				
-				while(times--)
+				if(E.coloff < 0)
 				{
-					if(c==Home)
-					{
-						editorMoveCursor(Arrow_left);
-					}
-					else
-					{
-						if(times==0)
-						{
-							break;
-						}
-						editorMoveCursor(Arrow_right);
-					}
+					E.coloff = 0;
 				}
+
+				E.renderX= E.row[E.cursorY].rsize;
+			}
+			else
+			{
+				if(c == Home)
+				{
+					E.coloff = 0;
+
+					E.renderX = 0;
+				}
+			}
 		}
 
 		break;
