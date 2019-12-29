@@ -13,6 +13,8 @@
 #include <sys/ioctl.h>
 #include <string.h>
 #include <sys/types.h>
+#include <stdarg.h>
+#include <time.h>
 
 /****** defines ******/
 
@@ -72,6 +74,12 @@ int rowoff;     //Stores the row number of the file from which the text should b
 int coloff;    //Stores the column number of the file from which the text should be displayed.
 
 int renderX;   //Stores the horizontal position of the cursor in the render string
+
+char* filename;  //String to store the filename of the file which is being currently edited.
+
+char statusmsg[80];  //String to store the message which is to be displayed to the user.
+
+time_t statusmsg_time; // Time for which statusmsg is to be displayed.
 
 };
 
@@ -426,6 +434,10 @@ void editorAppendRow(char *s, size_t len)
 
 void editorOpen(char* filename)                //function to open the text file which is to be edited in the text editor.
 {
+	free(E.filename);
+
+	E.filename = strdup(filename);
+
 	FILE *fp = fopen(filename, "r");
 	if(!fp)
 	{
@@ -544,7 +556,7 @@ void editorDrawRows(struct abuf *ab)
 {       
        	int y;  
    	int filerow;	
-       	for(y=0;y<E.screenrows-1;y++)       
+       	for(y=0;y<E.screenrows-2;y++)       
        	{ 
 		filerow = y+E.rowoff;
 	    if(filerow>=E.numrows)
@@ -601,28 +613,62 @@ void editorDrawRows(struct abuf *ab)
 	
 	filerow=y+E.rowoff;
 
-	if(filerow>=E.numrows)
+}
+
+
+void editorDrawStatusBar(struct abuf* ab)
+{
+	abAppend(ab, "\x1b[7m",4);
+
+	char status[80];
+	char rstatus[80];
+
+	int len = snprintf(status, sizeof(status), "%.20s      --     %d lines", (E.filename ? E.filename : "[No filename]"), E.numrows);
+        
+	int rlen=snprintf(rstatus,sizeof(rstatus),"%d - %d   ", E.cursorY+1,E.numrows);
+
+	abAppend(ab,status, len);
+
+	if(len > E.screencols)
 	{
-		abAppend(ab,"~",1);
+		len = E.screencols;
 	}
-	else
+
+	while(len < E.screencols)
 	{
-		int len = E.row[filerow].rsize - E.coloff;
-		if(len < 0)
+		if(E.screencols - len == rlen)
 		{
-			len = 0;
+			abAppend(ab,rstatus,rlen);
+			break;
 		}
-
-		if(E.screencols < len)
+		else
 		{
-			len = E.screencols;
+			abAppend(ab," ",1);
+			len++;
 		}
+	}
 
-		abAppend(ab,&E.row[filerow].render[E.coloff],E.row[filerow].rsize);
+	abAppend(ab, "\x1b[m",3);
+	abAppend(ab, "\r\n",2);
+}
+
+
+void editorDrawMessageBar(struct abuf* ab)  //It draws the message bar and displays the message for five seconds. It is called 
+{                                           //inside the refreshscreen() function.
+	abAppend(ab, "\x1b[K",3);
+	int msglen = strlen(E.statusmsg);
+	if(msglen > E.screencols)
+	{
+		msglen = E.screencols;
+	}
+
+	if(msglen && ((time(NULL) - E.statusmsg_time) < 5))  //condition to check if 5 seconds has passed or not.
+	{
+		abAppend(ab,E.statusmsg,msglen);
 	}
 }
 
-	
+
 
 void editorRefreshScreen()   // To render the editor screen in the terminal.
 {
@@ -637,7 +683,11 @@ void editorRefreshScreen()   // To render the editor screen in the terminal.
 	abAppend(&ab,"\x1b[2J",4);  // \x1b[2J is a escape sequence command which is ANSI defined and clears the whole screen
 	abAppend(&ab,"\x1b[H",3); // \x1b[H is a espace sequence command which is ANSI defined and repositions the cursor to                                          //the defined position mentioned in the command parameter.
 
-	editorDrawRows(&ab);
+	editorDrawRows(&ab);    //Function to draw the contents of the file on the screen.
+
+	editorDrawStatusBar(&ab);  //Function to draw the status bar at the bottom of the page.
+
+	editorDrawMessageBar(&ab);
 
 	char buf[32];
 	/*
@@ -656,6 +706,17 @@ void editorRefreshScreen()   // To render the editor screen in the terminal.
 
 	write(STDOUT_FILENO,ab.b,ab.len);
 	abFree(&ab);
+}
+
+
+void editorSetStatusMsg(const char *fmt, ...)    //Variadic function : used to point E.statusmsg to the string we want to print as
+						 //msg. Also set E.statusmsg_time. (Store the message we want to print).
+{
+	va_list ap;
+	va_start(ap,fmt);
+	vsnprintf(E.statusmsg, sizeof(E.statusmsg),fmt,ap);
+	va_end(ap);
+	E.statusmsg_time = time(NULL);
 }
 
 
@@ -896,10 +957,15 @@ int main(int argc, char *argv[])
 	E.rowoff=0;
 	E.coloff=0;
 	E.row = NULL;
+	E.filename = NULL;
+	E.statusmsg[0]='\0';
+	E.statusmsg_time=0;
 	if(argc >=2)
 	{
 		editorOpen(argv[1]);
 	}
+
+	editorSetStatusMsg("HELP: Ctrl-Q = quit");
 
 	while(1)
 	{
