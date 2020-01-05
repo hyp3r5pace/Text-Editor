@@ -428,6 +428,25 @@ void editorAppendRow(char *s, size_t len)
 
 
 
+void editorRowInsertChar(erow* row,int at,int c)
+{
+	if(at < 0 || at > row->size)
+	{
+		at = row->size;
+	}
+
+	row->chars = (char*) realloc(row->chars ,row->size+2);
+
+	memmove(&row->chars[at+1],&row->chars[at],(row->size+1)-at);
+
+	row->size++;
+
+	row->chars[at] = c;
+	editorUpdateRow(row);
+	
+}
+
+	
 
 
 /******** File I/O *********/
