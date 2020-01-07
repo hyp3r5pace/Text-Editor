@@ -28,6 +28,7 @@
 
 enum editorKey {          //Used to map arrow keys to movement of cursor function and preventing it from clashing with other charch
 						//ter inputs.
+		BackSpace = 127,
 		Arrow_left=1000,
 		Arrow_right,
 		Arrow_up ,
@@ -428,7 +429,7 @@ void editorAppendRow(char *s, size_t len)
 
 
 
-void editorRowInsertChar(erow* row,int at,int c)
+void editorRowInsertChar(erow* row,int at,int c)  //Function to insert a single character in a line.
 {
 	if(at < 0 || at > row->size)
 	{
@@ -437,8 +438,9 @@ void editorRowInsertChar(erow* row,int at,int c)
 
 	row->chars = (char*) realloc(row->chars ,row->size+2);
 
-	memmove(&row->chars[at+1],&row->chars[at],(row->size+1)-at);
-
+	memmove(&row->chars[at+1],&row->chars[at],(row->size+1)-at);  //memmove is same as memcopy(which is to copy one string to
+								      //another but it is preferred when both source and destinatio
+								      //-n memory overlap.
 	row->size++;
 
 	row->chars[at] = c;
@@ -446,7 +448,21 @@ void editorRowInsertChar(erow* row,int at,int c)
 	
 }
 
-	
+/********* Editor Operations ************/
+
+void editorInsertChar(int c)    //Function to take character from keypress and call editorRowInsertChar() function to insert the
+{				//character.
+	if(E.cursorY == E.numrows)
+	{
+		editorAppendRow("",0);
+	}
+
+	editorRowInsertChar(&E.row[E.cursorY],E.renderX,c);
+
+	E.renderX++;
+}
+
+
 
 
 /******** File I/O *********/
@@ -941,7 +957,15 @@ void editorProcessKeypress() {
 
 		case Del:
 		
-		break;		
+		break;
+
+		case BackSpace: 
+
+		break;
+
+		default: editorInsertChar(c);
+
+		break;	 
 	}
 
 }
