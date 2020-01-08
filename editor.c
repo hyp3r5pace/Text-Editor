@@ -15,6 +15,7 @@
 #include <sys/types.h>
 #include <stdarg.h>
 #include <time.h>
+#include <fcntl.h>
 
 /****** defines ******/
 
@@ -549,6 +550,65 @@ void abFree(struct abuf *ab)  //Function to deallocate memory to the dynamically
 }
 
 
+char* editorRowsToString(int* len)  
+{
+	int totlen = 0;
+
+	char* buf;
+
+	for(int i=0;i<E.numrows;i++)
+	{
+		totlen += E.row[i].size+1;
+	}
+
+	*len = totlen;
+
+	buf = (char*) malloc(totlen);
+
+	char* p = buf;
+
+	for(int i=0;i<E.numrows;i++)
+	{
+		memcpy(p , E.row[i].chars , E.row[i].size);
+		p +=E.row[i].size;
+
+		*p = '\n';
+
+		p++;
+	}
+
+	return buf;
+}
+
+
+void editorSave()       //function to write the contents of erow type array to file and thus save the changes.
+{
+	if(E.filename == NULL)
+	{
+		return;                        //not saving the file if filename is not provided as argument in command line.
+	}
+
+	int len;
+	
+	char* buf = editorRowsToString(&len);  //converting the whole content of file to a single string as it is the way it is
+					       // stored in a text file. All the lines compressed into a single string with each new
+					       //line marked by a \n
+
+	int fd= open(E.filename,O_RDWR | O_CREAT, 0644); // returns a "file descriptor" which is a unique id for a open file ( file 
+							 //stream). Open() function opens a file and thus establish a input/ouput
+							 //stream. O_RDWR is a flag which assigns permission to the stream for
+							 //reading and writing.O_CREAT is a flag which creates a file if any file
+							 //of the given filename doesn't exist. 0644 sets permissio for the file.
+							 //0644 allows owner of the file to read or write the file and read
+							 //permission for other users.
+							 //open(),O_RDWR,O_CREAT are from <fcntl.h>,(file control). 
+
+	ftruncate(fd,len); //Set the file size to the specified length of the string  which is to be writtten. ftruncate() is from
+			   //<unistd.h> (<unistd.h> provides access to the POSIX API.)
+	
+	write(fd,buf,len);
+}
+
 
 /******* Output ******/
 
@@ -568,7 +628,7 @@ void editorScroll()
 		E.rowoff = E.cursorY;
 	}
 
-	if(E.cursorY >= (E.rowoff + E.screenrows))  //For scrolling the file beyond the visible region during Arrow_down keypress.
+	if(E.cursorY >= (E.rowoff + E.screenrows)-2)  //For scrolling the file beyond the visible region during Arrow_down keypress.
 	{
 		E.rowoff = E.cursorY -E.screenrows + 1;
 	}
@@ -959,13 +1019,27 @@ void editorProcessKeypress() {
 		
 		break;
 
+		case CTRL_KEY('s'):       //mapping ctrl+s keypress to saving the changes in the file functionality.
+			editorSave();
+
+			break;
+
 		case BackSpace: 
+		case CTRL_KEY('h'):       //ctrl + h has a value of 8 which is same as value of ASCII value of backspace in old
+					  // version.
+		break;
+
+		case CTRL_KEY('l'):
+
+		break;
+
+		case '\x1b': 
 
 		break;
 
 		default: editorInsertChar(c);
 
-		break;	 
+ 		break;	 
 	}
 
 }
