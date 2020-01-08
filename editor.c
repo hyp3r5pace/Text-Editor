@@ -514,6 +514,8 @@ void editorOpen(char* filename)                //function to open the text file 
 			break;
 		}
 	}
+
+//	E.numrows+=2;
 }
 
 
@@ -628,7 +630,7 @@ void editorScroll()
 		E.rowoff = E.cursorY;
 	}
 
-	if(E.cursorY >= (E.rowoff + E.screenrows)-2)  //For scrolling the file beyond the visible region during Arrow_down keypress.
+	if(E.cursorY >= (E.rowoff + E.screenrows))  //For scrolling the file beyond the visible region during Arrow_down keypress.
 	{
 		E.rowoff = E.cursorY -E.screenrows + 1;
 	}
@@ -846,9 +848,27 @@ void editorMoveCursor(int key)
 		case Arrow_down:
 			 {
 				
-				if(E.cursorY <E.numrows-1)
+				if(E.cursorY <E.numrows)
 				{
 					E.cursorY++;
+
+					if(E.cursorY == E.numrows && E.row[E.cursorY-1].rsize>=1)
+					{
+						for(int i=0;i<4;i++)
+						{
+							editorAppendRow("",0);
+						}
+					}
+
+					if(E.cursorY ==E.numrows)
+					{
+						if(E.row[E.cursorY-1].rsize<1)
+						{
+							E.cursorY--;
+						}
+					}
+		
+
 				}
 
 				if(E.cursorX > (E.row[E.cursorY].rsize-1))
