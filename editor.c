@@ -460,6 +460,43 @@ void editorRowInsertChar(erow* row,int at,int c)  //Function to insert a single 
 	
 }
 
+void editorRowDelChars(erow* row, int at)
+{
+	if(at < 0  || at >= row->size)    //condition to check if something to be deleted lies within the start and end of the
+					  //string (both ends inclusive).
+	{
+		return ;
+	}
+
+	memmove(&row->chars[at], &row->chars[at+1], row->size-at); //Shift the characters to the left to overrite the character 
+								   //to be deleted.
+	row->size--;
+
+	editorUpdateRow(row);
+
+	E.dirty_flag++;  //Updating dirty_flag so as to infer a change in the file which is unsaved.
+
+}
+
+
+void editorDelChars()
+{
+	if(E.cursorY == E.numrows)
+	{
+		return;
+	}
+
+	erow *row=&E.row[E.cursorY];
+
+	if(E.renderX > 0)
+	{
+		editorRowDelChars(row,E.renderX-1);
+		E.renderX--;
+	}
+}
+
+
+
 /********* Editor Operations ************/
 
 void editorInsertChar(int c)    //Function to take character from keypress and call editorRowInsertChar() function to insert the
@@ -1092,7 +1129,14 @@ void editorProcessKeypress() {
 
 		break;
 
-		case Del:
+		case Del: {
+
+			
+			editorMoveCursor(Arrow_right);		  
+			editorDelChars(); 
+
+
+			  }
 		
 		break;
 
@@ -1104,6 +1148,8 @@ void editorProcessKeypress() {
 		case BackSpace: 
 		case CTRL_KEY('h'):       //ctrl + h has a value of 8 which is same as value of ASCII value of backspace in old
 					  // version.
+			editorDelChars();
+
 		break;
 
 		case CTRL_KEY('l'):
