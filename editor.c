@@ -87,6 +87,9 @@ time_t statusmsg_time; // Time for which statusmsg is to be displayed.
 
 struct editorConfig E;
 
+/****** Prototypes **********/
+
+void editorSetStatusMsg(const char* fmt, ...);
 
 /**** Terminal ******/
 
@@ -596,6 +599,7 @@ void editorSave()       //function to write the contents of erow type array to f
 					       // stored in a text file. All the lines compressed into a single string with each new
 					       //line marked by a \n
 
+
 	int fd= open(E.filename,O_RDWR | O_CREAT, 0644); // returns a "file descriptor" which is a unique id for a open file ( file 
 							 //stream). Open() function opens a file and thus establish a input/ouput
 							 //stream. O_RDWR is a flag which assigns permission to the stream for
@@ -605,10 +609,35 @@ void editorSave()       //function to write the contents of erow type array to f
 							 //permission for other users.
 							 //open(),O_RDWR,O_CREAT are from <fcntl.h>,(file control). 
 
-	ftruncate(fd,len); //Set the file size to the specified length of the string  which is to be writtten. ftruncate() is from
-			   //<unistd.h> (<unistd.h> provides access to the POSIX API.)
+
+	if(fd != -1)
+	{
+
+	  if(ftruncate(fd,len) != -1)
+	  {
+		 	     //Set the file size to the specified length of the string  which is to be writtten. ftruncate() is from
+				   //<unistd.h> (<unistd.h> provides access to the POSIX API.)
 	
-	write(fd,buf,len);
+        	if(write(fd,buf,len)==len)
+		{
+			close(fd);
+			free(buf);
+			editorSetStatusMsg("%d bytes written to the disk",len);
+			return;
+		}
+
+		close(fd);
+	  }
+
+	}
+	editorSetStatusMsg("Can't Save! I/O error: %s", strerror(errno)); //strerror() has same job as perror() as both print error
+									//message using the value stored in errno. Only difference 
+									//is that strerror() prints the error string through stdout
+									//stream and perror() prints the error msg through stderr 
+									//stream.
+	free(buf);
+	
+
 }
 
 
@@ -1102,7 +1131,7 @@ int main(int argc, char *argv[])
 		editorOpen(argv[1]);
 	}
 
-	editorSetStatusMsg("HELP: Ctrl-Q = quit");
+	editorSetStatusMsg("HELP: Ctrl-Q = quit | Ctrl-S = Save");
 
 	while(1)
 	{
