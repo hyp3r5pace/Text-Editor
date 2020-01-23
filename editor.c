@@ -27,6 +27,8 @@
 
 #define EDITOR_TAB_STOP 8  //the maximum number of spaces a tab keypress can have.
 
+#define EDITOR_QUIT_TIMES 3 //The number of times one has to press Ctrl-Q to quit the editor  if the displayed file is not saved.
+
 enum editorKey {          //Used to map arrow keys to movement of cursor function and preventing it from clashing with other charch
 						//ter inputs.
 		BackSpace = 127,
@@ -82,6 +84,9 @@ char* filename;  //String to store the filename of the file which is being curre
 char statusmsg[80];  //String to store the message which is to be displayed to the user.
 
 time_t statusmsg_time; // Time for which statusmsg is to be displayed.
+
+int dirty_flag;  //it is a flag variable which indicates if a file has been edited and not saved (i.e; the file has been modified
+		 //and the content displayed is different from the content that is saved in the file).
 
 };
 
@@ -428,6 +433,7 @@ void editorAppendRow(char *s, size_t len)
 		editorUpdateRow(&E.row[at]);
 
    		E.numrows++;
+		E.dirty_flag++;
 }
 
 
@@ -449,6 +455,8 @@ void editorRowInsertChar(erow* row,int at,int c)  //Function to insert a single 
 
 	row->chars[at] = c;
 	editorUpdateRow(row);
+
+	E.dirty_flag++;
 	
 }
 
@@ -519,6 +527,11 @@ void editorOpen(char* filename)                //function to open the text file 
 	}
 
 //	E.numrows+=2;
+
+	E.dirty_flag=0;  //to set the dirty_flag to 0 after the file is opened for the first time as during opening the file, it
+			 //calls the fuction editorAppendRow(), which increments the dirty_flag but which is not correct to do, so
+			 //to compensate that, dirty_flag is set to 0 here.
+
 }
 
 
@@ -622,6 +635,7 @@ void editorSave()       //function to write the contents of erow type array to f
 		{
 			close(fd);
 			free(buf);
+			E.dirty_flag=0; //Dirty_flag is set to 0 so as the file is saved and now all the changes have been saved.
 			editorSetStatusMsg("%d bytes written to the disk",len);
 			return;
 		}
@@ -749,7 +763,7 @@ void editorDrawStatusBar(struct abuf* ab)
 	char status[80];
 	char rstatus[80];
 
-	int len = snprintf(status, sizeof(status), "%.20s      --     %d lines", (E.filename ? E.filename : "[No filename]"), E.numrows);
+	int len = snprintf(status, sizeof(status), "%.20s      --     %d lines %s", (E.filename ? E.filename : "[No filename]"), E.numrows, E.dirty_flag ? "(Modified)" : "");
         
 	int rlen=snprintf(rstatus,sizeof(rstatus),"%d - %d   ", E.cursorY+1,E.numrows);
 
@@ -968,13 +982,27 @@ void editorMoveCursor(int key)
 void editorProcessKeypress() {
 	int c= editorReadKey();
 
+	static int quit_times = EDITOR_QUIT_TIMES;   //quit_times hold the numbe of times Ctrl-Q is to be pressed if the data is
+						     //unsaved. quit_times is declared statis so that it holds the same data even
+						     //for repetitive method calling. 
+
 	switch(c)
 	{
 		case CTRL_KEY('q'):
+		{
+			if(E.dirty_flag && quit_times > 0)
+			{
+		       	editorSetStatusMsg("WARNING!! File has unsaved changes. Press Ctrl-Q %d more times to quit", quit_times);
+				quit_times--;
+				return ;	
+			}	
+			
 		write(STDOUT_FILENO, "\x1b[2J", 4);               
 	       	write(STDOUT_FILENO, "\x1b[H", 3);	       
 
 		exit(0);
+
+		}
 		break;
 
 		case Arrow_up:
@@ -1091,6 +1119,9 @@ void editorProcessKeypress() {
  		break;	 
 	}
 
+	quit_times = EDITOR_QUIT_TIMES; //reset quit_times if before completing pressing of Ctrl-Q three times consecutively, any
+					//other key is pressed.
+
 }
 
 		
@@ -1126,6 +1157,7 @@ int main(int argc, char *argv[])
 	E.filename = NULL;
 	E.statusmsg[0]='\0';
 	E.statusmsg_time=0;
+	E.dirty_flag=0;
 	if(argc >=2)
 	{
 		editorOpen(argv[1]);
