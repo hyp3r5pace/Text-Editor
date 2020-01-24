@@ -498,6 +498,10 @@ void editorDelChars()   //Method to delete a character preceding the X coordinat
 	{
 		editorRowDelChars(row,E.renderX-1);
 		E.renderX--;
+		if(E.renderX == 0)  //comdition to prevent double deleteion as if E.renderX = 0, then next if case will be executed,					//which is a unwanted execution.Helps to tackle the issue of pressing Delete at the start of the 				    // line.
+		{
+			return;
+		}
 	}
 
 	if(E.renderX == 0)    //Condition to check for backspacing at the start of the line.
