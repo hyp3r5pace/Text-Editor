@@ -12,10 +12,10 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <string.h>
-#include <sys/types.h>
 #include <stdarg.h>
 #include <time.h>
 #include <fcntl.h>
+
 
 /****** defines ******/
 
@@ -96,6 +96,11 @@ struct editorConfig E;
 
 void editorSetStatusMsg(const char* fmt, ...);
 
+void editorFreeRow(erow* row);
+
+void editorDelRow(int at);
+
+void editorRowAppendString(erow* row, char* s, size_t len);
 /**** Terminal ******/
 
 void die(const char* s)      
@@ -460,7 +465,8 @@ void editorRowInsertChar(erow* row,int at,int c)  //Function to insert a single 
 	
 }
 
-void editorRowDelChars(erow* row, int at)
+void editorRowDelChars(erow* row, int at)  //Method which deltes a single character from a string by overwriting it with part of
+					   //after the character using memmove() method.
 {
 	if(at < 0  || at >= row->size)    //condition to check if something to be deleted lies within the start and end of the
 					  //string (both ends inclusive).
@@ -479,13 +485,13 @@ void editorRowDelChars(erow* row, int at)
 }
 
 
-void editorDelChars()
+void editorDelChars()   //Method to delete a character preceding the X coordinate of the current position of the cursor. 
 {
 	if(E.cursorY == E.numrows)
 	{
 		return;
 	}
-
+	
 	erow *row=&E.row[E.cursorY];
 
 	if(E.renderX > 0)
@@ -493,6 +499,70 @@ void editorDelChars()
 		editorRowDelChars(row,E.renderX-1);
 		E.renderX--;
 	}
+
+	if(E.renderX == 0)    //Condition to check for backspacing at the start of the line.
+	{
+		if(E.cursorY !=0) //Condition to check if cursor is present at the start of the file.
+		{
+			E.renderX = E.row[E.cursorY-1].size; //move the cursor to the end of previous line on backspacing at the 
+							     //start of the current line.
+			
+			editorRowAppendString(&E.row[E.cursorY-1],E.row[E.cursorY].chars,E.row[E.cursorY].size); //Appending the
+					 //string of current line to string of previous line.
+			
+//			editorFreeRow(&E.row[E.cursorY]);
+			
+			editorDelRow(E.cursorY); //Method to delete the current line and shift each line after it towards it by one.
+
+			E.cursorY--;
+
+		}
+	}
+
+}
+
+void editorFreeRow(erow* row)  //Method to delete the strings of current line after it has been concatenated with string of previous                              //line after backspacing.
+{
+	free(row->chars);
+	free(row->render);
+}
+
+
+void editorDelRow(int at)   //Method to free the string of current line and shift the strings after current line up by one.
+{
+	if(at < 0 || at >=E.numrows) //To check if cursor is at the end of the file or not, if it is present at the end of line
+	       			     //then do nothing.
+	{
+		return;
+	}
+
+	editorFreeRow(&E.row[at]);  //freeing the pointer of current line pointing to the string of current line.
+
+	memmove(&E.row[at], &E.row[at+1], sizeof(erow) * (E.numrows - at -1));  //Since E.row is an array of erow type, we are using
+ 										//memmove to shift the array towards the left by one										 //index. Here erow contais pointers to strings and int 									     // variable.
+
+	E.numrows--; //as lines has moved up by one,so number of lines has reduced by one.
+	E.dirty_flag++; //Indicating something is edited.
+
+
+}
+
+
+void editorRowAppendString(erow* row, char* s, size_t len)
+{
+	row->chars = realloc(row->chars,row->size+len+1);  //allocate more space to the string, to which another string is to be
+							   //concated.
+
+
+	memcpy(&row->chars[row->size],s,len);      //Copying one string to the end of another string ( basically conctenating).
+
+	row->size +=len;  //updating the size to new size.
+
+	row->chars[row->size] = '\0'; //Forming a stirng by putting null character at the end of the array of characters.
+
+	editorUpdateRow(row); //Method to update Render string as chars string is changed.
+ 
+	E.dirty_flag++;  //Updating the dirty_flag to indicate change.
 }
 
 
@@ -1129,10 +1199,12 @@ void editorProcessKeypress() {
 
 		break;
 
-		case Del: {
+		case Del: {   //Delete Keypress deletes the character at the cursor position. 
 
 			
-			editorMoveCursor(Arrow_right);		  
+			editorMoveCursor(Arrow_right);// Since editorDelChar() method deletes the chacracter left of the cursor
+						      //position, so it is required to move the cursor one position right to delete
+						      //the current character at the cursor position.
 			editorDelChars(); 
 
 
@@ -1220,5 +1292,13 @@ int main(int argc, char *argv[])
 	
 	return 0;
 }
+
+
+
+
+
+
+
+
 
 
