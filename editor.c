@@ -40,7 +40,8 @@ enum editorKey {          //Used to map arrow keys to movement of cursor functio
 		Page_down,
 		Home,
 		End,
-		Del
+		Del,
+		Enter =13     //ASCII value of enter keypress
 
 	       };
 
@@ -418,15 +419,49 @@ void editorUpdateRow(erow *row)    //function to parse chars and replace tabs wi
 	row->rsize = idx;
 }
 
+/*
 
-
-
-void editorAppendRow(char *s, size_t len)
+void editorAppendRow(char* s, size_t len)
 {
+	E.row=realloc(E.row,sizeof(erow)*(E.numrows+1));
+
+	int at=E.numrows;
+	E.row[at].size=len;
+
+	E.row[at].chars=(char*)malloc(len+1);
+
+	memcpy(E.row[at].chars,s,len+1);
+	E.row[at].render=NULL;
+	E.row[at].rsize=0;
+
+	editorUpdateRow(&E.row[at]);
+
+	E.numrows++;
+
+	E.dirty_flag++;
+}
+
+*/
+	
+
+
+void editorInsertRow(int at,char *s, size_t len)  //Function to insert a string at the current line number and shift current
+{						  //present strings downward.
+		if(at < 0 && at > E.numrows)
+		{
+			return;
+		}
+
 		
 		E.row = realloc(E.row,sizeof(erow) * (E.numrows+1));
+
+		memmove(&E.row[at+1],&E.row[at],sizeof(erow) * (E.numrows - at));
 		
-		int at=E.numrows;
+		
+			
+	//	int at=E.numrows;
+	
+
 	        E.row[at].size = len;       
 	       	E.row[at].chars = (char*) malloc(len+1);       
 	       	memcpy(E.row[at].chars,s,len+1);       
@@ -570,6 +605,14 @@ void editorRowAppendString(erow* row, char* s, size_t len)
 }
 
 
+void editorEnterChars()
+{
+	if(E.renderX < E.row[E.cursorY].size && E.renderX > 0)
+	{
+		
+	}
+}
+
 
 /********* Editor Operations ************/
 
@@ -577,7 +620,7 @@ void editorInsertChar(int c)    //Function to take character from keypress and c
 {				//character.
 	if(E.cursorY == E.numrows)
 	{
-		editorAppendRow("",0);
+		editorInsertRow(E.numrows,"",0);
 	}
 
 	editorRowInsertChar(&E.row[E.cursorY],E.renderX,c);
@@ -585,6 +628,32 @@ void editorInsertChar(int c)    //Function to take character from keypress and c
 	E.renderX++;
 }
 
+
+void editorInsertNewLines()    //Function to insert new lines when at the start of a line  or break current string and insert the 
+{			       //end part of the string to next line.
+	if(E.renderX==0)
+	{
+		editorInsertRow(E.cursorY,"",0);
+	}
+	else
+	{
+		erow* row = &E.row[E.cursorY];
+		editorInsertRow(E.cursorY+1,&row->chars[E.renderX],row->size-E.renderX);
+
+		row=&E.row[E.cursorY];
+
+		row->size=E.renderX;
+
+		row->chars[E.renderX]='\0';
+
+		editorUpdateRow(row);
+	}
+
+	E.cursorY++;
+
+	E.renderX=0;
+
+}
 
 
 
@@ -625,7 +694,7 @@ void editorOpen(char* filename)                //function to open the text file 
 				linelen--;
 			}
 		
-		editorAppendRow(line,linelen);
+		editorInsertRow(E.numrows,line,linelen);
 		free(line);
 
 		}
@@ -1010,7 +1079,7 @@ void editorMoveCursor(int key)
 					{
 						for(int i=0;i<4;i++)
 						{
-							editorAppendRow("",0);
+							editorInsertRow(E.numrows,"",0);
 						}
 					}
 
@@ -1226,6 +1295,10 @@ void editorProcessKeypress() {
 					  // version.
 			editorDelChars();
 
+		break;
+
+		case Enter: editorInsertNewLines();
+				
 		break;
 
 		case CTRL_KEY('l'):
